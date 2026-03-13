@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const labelProfessor = document.getElementById('label-professor');
 
     let currentMode = 'client';
+    let conversationHistory = [];
 
     // Handle Mode Switch
     modeToggle.addEventListener('change', (e) => {
@@ -22,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.classList.add('professor-mode');
             labelProfessor.classList.add('active');
             labelClient.classList.remove('active');
+            conversationHistory = [];
+            answerText.innerHTML = '';
+            resultsWrapper.classList.add('hidden');
             questionInput.placeholder = "e.g., Professor, how does the continuous representation doctrine apply if...";
             submitBtn.querySelector('.btn-text').textContent = "Submit to Professor";
         } else {
@@ -29,6 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.classList.remove('professor-mode');
             labelClient.classList.add('active');
             labelProfessor.classList.remove('active');
+            conversationHistory = [];
+            answerText.innerHTML = '';
+            resultsWrapper.classList.add('hidden');
             questionInput.placeholder = "e.g., What happens if my lawyer misses the statute of limitations in New York?";
             submitBtn.querySelector('.btn-text').textContent = "Analyze Case";
         }
@@ -45,6 +52,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const question = questionInput.value.trim();
         if (!question) return;
 
+        // Add to history
+        conversationHistory.push({ role: 'user', content: question });
+
+        // Update UI immediately with user message
+        if (conversationHistory.length === 1) {
+            answerText.innerHTML = '';
+        }
+
+        const userBubble = document.createElement('div');
+        userBubble.style.margin = "1rem 0";
+        userBubble.style.padding = "1rem";
+        userBubble.style.background = "rgba(255,255,255,0.05)";
+        userBubble.style.borderLeft = "4px solid var(--text-secondary)";
+        userBubble.style.borderRadius = "var(--radius-sm)";
+        userBubble.innerHTML = `<strong>You:</strong><br/>${question}`;
+        answerText.appendChild(userBubble);
+
+        // Clear input and reveal results
+        questionInput.value = '';
+        questionInput.style.height = 'auto';
+        resultsWrapper.classList.remove('hidden');
+
         // UI Loading State
         setLoading(true);
 
@@ -54,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ question, mode: currentMode })
+                body: JSON.stringify({ messages: conversationHistory, mode: currentMode })
             });
 
             if (!response.ok) {
@@ -63,12 +92,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
 
-            // Format answer using Marked.js if available, otherwise just text
-            if (typeof marked !== 'undefined') {
-                answerText.innerHTML = marked.parse(data.answer);
-            } else {
-                answerText.innerText = data.answer;
-            }
+            // Add AI response to history
+            conversationHistory.push({ role: 'assistant', content: data.answer });
+
+            // Create AI Bubble
+            const aiBubble = document.createElement('div');
+            aiBubble.style.marginTop = "1.5rem";
+            aiBubble.style.marginBottom = "1.5rem";
+            aiBubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.answer) : data.answer;
+            answerText.appendChild(aiBubble);
 
             // Render Sources
             sourcesList.innerHTML = '';
@@ -110,7 +142,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error:', error);
-            answerText.innerHTML = `<div style="color: #ff6b6b; font-weight: 500;">An error occurred while analyzing your case. Please try again later.</div>`;
+            const errBubble = document.createElement('div');
+            errBubble.style.color = "#ff6b6b";
+            errBubble.style.fontWeight = "500";
+            errBubble.innerText = "An error occurred while analyzing your case. Please try again later.";
+            answerText.appendChild(errBubble);
             sourcesList.innerHTML = '';
             resultsWrapper.classList.remove('hidden');
         } finally {

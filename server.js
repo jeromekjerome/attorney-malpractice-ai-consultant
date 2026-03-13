@@ -11,13 +11,14 @@ app.use(express.static('public')); // Serve frontend files
 
 app.post('/api/ask', async (req, res) => {
     try {
-        const { question, mode } = req.body;
+        const { question, messages, mode } = req.body;
 
-        if (!question) {
-            return res.status(400).json({ error: "Question is required." });
+        if (!question && (!messages || messages.length === 0)) {
+            return res.status(400).json({ error: "A question or message history is required." });
         }
 
-        const result = await answerUserQuestion(question, mode);
+        const input = messages || [{ role: 'user', content: question }];
+        const result = await answerUserQuestion(input, mode);
         res.json(result);
     } catch (error) {
         console.error("Error processing question:", error);

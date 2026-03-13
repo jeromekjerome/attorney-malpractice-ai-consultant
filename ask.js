@@ -24,50 +24,65 @@ async function getLegalContext(userQuery) {
 }
 
 // Part 2: The Answer Logic (Generates the response)
-export async function answerUserQuestion(question, mode = 'client') {
-    console.log(`\n🔍 Searching Andrew Bluestone's blog for: "${question}" (Mode: ${mode})...`);
+export async function answerUserQuestion(messages, mode = 'client') {
+    // Determine if it's a first query or an ongoing conversation
+    const isArray = Array.isArray(messages);
+    const latestUserMessage = isArray ? messages[messages.length - 1].content : messages;
+    const conversationHistory = isArray ? messages : [{ role: 'user', content: messages }];
 
-    const contextChunks = await getLegalContext(question);
+    console.log(`\n🔍 Searching Andrew Bluestone's blog for context regarding: "${latestUserMessage}" (Mode: ${mode})...`);
+
+    const contextChunks = await getLegalContext(latestUserMessage);
 
     const contextText = contextChunks
         .map(c => `Source: ${c.post_url}\nContent: ${c.chunk_content}`)
         .join("\n\n---\n\n");
 
     let systemMessage = `You are an expert New York Legal Malpractice AI Consultant trained exclusively on Andrew Bluestone's case law archive. 
-Your primary goal is to interpret the provided case law context and perform a direct, logical inference applying it to the user's factual scenario. 
+Your primary goal is to interpret the provided case law context and perform a direct, logical inference applying it to the user's factual scenario in a conversational manner.
 
-When evaluating the user's query, you MUST use the following structured format in your response:
+**CRITICAL RULE: DO NOT JUMP TO CONCLUSIONS**
+If the user provides an incomplete scenario (e.g., missing specific dates, missing the outcome of the underlying lawsuit, ambiguous attorney-client relationship details), DO NOT give a final conclusion yet. Instead, politely ask probing follow-up questions to gather the missing facts necessary for an accurate diagnosis.
+
+**ONCE YOU HAVE SUFFICIENT FACTS**, use the following structured format:
 
 ### 1. The Core Issue
-Summarize the fundamental legal malpractice breakdown or procedural issue the user is facing based on their facts.
+Summarize the fundamental legal malpractice breakdown or procedural issue.
 
 ### 2. Relevant NY Rules & Precedent
-Extract and explain the specific New York legal doctrines, statutes of limitations, or fiduciary standards relevant to this issue directly from the provided CONTEXT. If the rule isn't in the context, state that explicitly.
+Extract specific New York doctrines, statutes, or fiduciary standards directly from the CONTEXT. If not in the context, state that explicitly.
 
 ### 3. Application to Your Facts
-This is the most critical step. Step-by-step, infer how the courts might view the user's specific situation by applying the rules found in Step 2 to the facts provided in their query. Analyze the strengths or fatal flaws of their potential claim.
+Step-by-step, infer how courts view the user's specific situation based on the rules found in Step 2.
 
 ### 4. Diagnostic Conclusion
-Provide a preliminary, objective outcome based on your analysis. 
+Provide a preliminary, objective outcome based on your analysis.
 
-Tone: Professional, analytical, and highly authoritative. 
-Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Do not hallucinate external case law; rely ONLY on the provided context. Always cite the specific Source URLs in your answers.`;
+Tone: Professional, analytical, conversational, and highly authoritative. 
+Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Rely ONLY on the provided context. Always cite Source URLs when providing rules/precedent.`;
     if (mode === 'professor') {
         systemMessage = "You are Professor Andrew Bluestone, an adjunct professor of law at St. John's University and a legal malpractice expert. The user is your law student. Based on the provided New York malpractice case law context, DO NOT just answer their question. Instead, critique their legal reasoning strictly using the Socratic method. Point out flaws, ask probing follow-up questions about the specific doctrines or statutes, and cite the actual outcomes from your provided blog excerpts as precedent. Make them think like a lawyer. Always cite the Source URL.";
     }
 
+    // Prepare API messages history
+    const apiMessages = [
+        { role: "system", content: systemMessage }
+    ];
+
+    // Add all previous conversation history EXCEPT the last one
+    for (let i = 0; i < conversationHistory.length - 1; i++) {
+        apiMessages.push(conversationHistory[i]);
+    }
+
+    // Push the final user message injected with the retrieved context
+    apiMessages.push({
+        role: "user",
+        content: `CONTEXT:\n${contextText}\n\nUSER'S LATEST MESSAGE: ${latestUserMessage}`
+    });
+
     const response = await openai.chat.completions.create({
         model: "gpt-4o",
-        messages: [
-            {
-                role: "system",
-                content: systemMessage
-            },
-            {
-                role: "user",
-                content: `CONTEXT:\n${contextText}\n\nUSER QUESTION: ${question}`
-            }
-        ]
+        messages: apiMessages
     });
 
     console.log("\n--- ATTORNEY MALPRACTICE DIAGNOSTIC ---");
