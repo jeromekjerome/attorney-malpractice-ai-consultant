@@ -24,8 +24,8 @@ async function getLegalContext(userQuery) {
 }
 
 // Part 2: The Answer Logic (Generates the response)
-export async function answerUserQuestion(question) {
-    console.log(`\n🔍 Searching Andrew Bluestone's blog for: "${question}"...`);
+export async function answerUserQuestion(question, mode = 'client') {
+    console.log(`\n🔍 Searching Andrew Bluestone's blog for: "${question}" (Mode: ${mode})...`);
 
     const contextChunks = await getLegalContext(question);
 
@@ -33,12 +33,17 @@ export async function answerUserQuestion(question) {
         .map(c => `Source: ${c.post_url}\nContent: ${c.chunk_content}`)
         .join("\n\n---\n\n");
 
+    let systemMessage = "You are a legal malpractice diagnostic assistant. Use the provided blog excerpts from Andrew Bluestone to answer the user's question. If the answer isn't in the context, say you don't know. Always cite the Source URL.";
+    if (mode === 'professor') {
+        systemMessage = "You are Professor Andrew Bluestone, an adjunct professor of law at St. John's University and a legal malpractice expert. The user is your law student. Based on the provided New York malpractice case law context, DO NOT just answer their question. Instead, critique their legal reasoning strictly using the Socratic method. Point out flaws, ask probing follow-up questions about the specific doctrines or statutes, and cite the actual outcomes from your provided blog excerpts as precedent. Make them think like a lawyer. Always cite the Source URL.";
+    }
+
     const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
             {
                 role: "system",
-                content: "You are a legal malpractice diagnostic assistant. Use the provided blog excerpts from Andrew Bluestone to answer the user's question. If the answer isn't in the context, say you don't know. Always cite the Source URL."
+                content: systemMessage
             },
             {
                 role: "user",

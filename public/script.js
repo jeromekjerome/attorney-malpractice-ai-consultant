@@ -9,6 +9,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const answerText = document.getElementById('answerText');
     const sourcesList = document.getElementById('sourcesList');
 
+    const modeToggle = document.getElementById('modeToggle');
+    const labelClient = document.getElementById('label-client');
+    const labelProfessor = document.getElementById('label-professor');
+
+    let currentMode = 'client';
+
+    // Handle Mode Switch
+    modeToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            currentMode = 'professor';
+            document.body.classList.add('professor-mode');
+            labelProfessor.classList.add('active');
+            labelClient.classList.remove('active');
+            questionInput.placeholder = "e.g., Professor, how does the continuous representation doctrine apply if...";
+            submitBtn.querySelector('.btn-text').textContent = "Submit to Professor";
+        } else {
+            currentMode = 'client';
+            document.body.classList.remove('professor-mode');
+            labelClient.classList.add('active');
+            labelProfessor.classList.remove('active');
+            questionInput.placeholder = "e.g., What happens if my lawyer misses the statute of limitations in New York?";
+            submitBtn.querySelector('.btn-text').textContent = "Analyze Case";
+        }
+    });
+
     // Auto-resize textarea
     questionInput.addEventListener('input', function () {
         this.style.height = 'auto';
@@ -29,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ question })
+                body: JSON.stringify({ question, mode: currentMode })
             });
 
             if (!response.ok) {

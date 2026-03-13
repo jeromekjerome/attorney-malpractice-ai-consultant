@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Andrew Bluestone | Diagnostic AI</title>
     <!-- Use Google Fonts for modern typography -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
@@ -28,7 +32,17 @@
         <main class="main-container">
             <div class="hero">
                 <h1 class="hero-title">Legal Malpractice <br><span class="accent-text">Diagnostic Engine</span></h1>
-                <p class="hero-subtitle">Ask your question regarding legal malpractice, and our AI will consult our extensive database of New York case law and legal articles to provide guidance.</p>
+                <p class="hero-subtitle">Ask your question regarding legal malpractice, and our AI will consult our
+                    extensive database of New York case law and legal articles to provide guidance.</p>
+            </div>
+
+            <div class="mode-toggle-container">
+                <span class="mode-label active" id="label-client">Client Mode</span>
+                <label class="switch">
+                    <input type="checkbox" id="modeToggle">
+                    <span class="slider round"></span>
+                </label>
+                <span class="mode-label" id="label-professor">Professor Mode</span>
             </div>
 
             <div class="interaction-card glass-panel">
@@ -36,7 +50,9 @@
                     <div class="input-group">
                         <label for="questionInput">Describe your situation or legal question</label>
                         <div class="textarea-wrapper">
-                            <textarea id="questionInput" placeholder="e.g., What happens if my lawyer misses the statute of limitations in New York?" rows="4" required spellcheck="true"></textarea>
+                            <textarea id="questionInput"
+                                placeholder="e.g., What happens if my lawyer misses the statute of limitations in New York?"
+                                rows="4" required spellcheck="true"></textarea>
                             <div class="focus-ring"></div>
                         </div>
                     </div>
@@ -58,7 +74,10 @@
                     <div class="result-card glass-panel">
                         <div class="card-header">
                             <div class="header-icon">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                                </svg>
                             </div>
                             <h3 class="card-title">Diagnostic Analysis</h3>
                         </div>
@@ -70,7 +89,10 @@
                     <div class="sources-card glass-panel sidebar-card">
                         <div class="card-header">
                             <div class="header-icon small">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                                </svg>
                             </div>
                             <h4 class="card-title">Supporting Authority</h4>
                         </div>
@@ -86,4 +108,5 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="script.js"></script>
 </body>
+
 </html>

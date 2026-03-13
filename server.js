@@ -11,13 +11,13 @@ app.use(express.static('public')); // Serve frontend files
 
 app.post('/api/ask', async (req, res) => {
     try {
-        const { question } = req.body;
+        const { question, mode } = req.body;
 
         if (!question) {
             return res.status(400).json({ error: "Question is required." });
         }
 
-        const result = await answerUserQuestion(question);
+        const result = await answerUserQuestion(question, mode);
         res.json(result);
     } catch (error) {
         console.error("Error processing question:", error);
