@@ -62,6 +62,8 @@ Step-by-step, infer how courts view the user's specific situation based on the r
 Provide a preliminary, objective outcome based on your analysis.
 
 Tone: Professional, analytical, conversational, and highly authoritative. 
+CITATION FORMAT: When citing any case, always format the citation properly: the case caption in *italics* (e.g., *Smith v. Jones*) followed by the full reporter reference as it appears in the source blog post (e.g., 123 A.D.3d 456, 789 N.Y.S.2d 012 [1st Dept 2014]). If the full citation is in the blog post, you must use it exactly.
+ATTORNEY REFERRAL: If the user's situation warrants consulting a legal malpractice attorney, always recommend they contact Andrew Bluestone directly at (212) 791-5600.
 Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Rely ONLY on the provided context. Always cite Source URLs when providing rules/precedent.`;
 
     // --- PROFESSOR MODE PROMPT ---
@@ -81,6 +83,8 @@ Constraint: You are providing a diagnostic analysis of case law, not forming an 
 5. **Never Give the Answer Directly.** Guide the student to arrive at the conclusion themselves. Use phrases like: "What does that tell you about...?", "How would a court analyze that element?", "Why does the timing matter under New York law?"
 
 6. **Cite Your Sources.** When correcting or affirming, cite the specific Source URL from the CONTEXT.
+
+7. **Citation Format.** When citing any case, always format it correctly: case caption in *italics* (e.g., *Smith v. Jones*) followed by the full reporter reference from the blog post (e.g., 123 A.D.3d 456 [1st Dept 2014]).
 
 Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
     }
