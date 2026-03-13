@@ -74,6 +74,104 @@ async function shepardizeCitations(text) {
     }
 }
 
+// Part 0b: Forward Citation Profiler
+// For each verified case the AI cites, find newer opinions that also cited it.
+// This surfaces whether the legal principles cited have been recently reaffirmed,
+// distinguished, or potentially superseded by more recent case law.
+async function forwardCiteProfile(citations) {
+    if (!COURTLISTENER_TOKEN || !citations || citations.length === 0) return [];
+
+    const clHeaders = {
+        'Authorization': `Token ${COURTLISTENER_TOKEN}`,
+        'Content-Type': 'application/json'
+    };
+
+    // Only process verified citations that have a cluster with a sub-opinion
+    const verified = citations.filter(c => c.status === 200 && c.clusters?.length > 0);
+
+    const profiles = await Promise.all(verified.map(async (cite) => {
+        try {
+            const cluster = cite.clusters[0];
+            const clusterUrl = cluster.resource_uri; // e.g. /api/rest/v4/clusters/2115637/
+            const clusterId = clusterUrl?.match(/(\d+)\/?$/)?.[1];
+            if (!clusterId) return null;
+
+            // Step 1: Get the primary opinion ID for this cluster
+            const clusterRes = await fetch(`https://www.courtlistener.com/api/rest/v4/clusters/${clusterId}/`, {
+                headers: clHeaders
+            });
+            if (!clusterRes.ok) return null;
+            const clusterData = await clusterRes.json();
+
+            // sub_opinions is an array of opinion URLs — grab the first
+            const opinionUrl = clusterData.sub_opinions?.[0];
+            const opinionId = opinionUrl?.match(/(\d+)\/?$/)?.[1];
+            if (!opinionId) return null;
+
+            const originalDate = clusterData.date_filed || '1900-01-01';
+
+            // Step 2: Find the 3 most recent opinions that cite this one
+            const forwardRes = await fetch(
+                `https://www.courtlistener.com/api/rest/v4/opinions-cited/?cited_opinion=${opinionId}&ordering=-id&page_size=5`,
+                { headers: clHeaders }
+            );
+            if (!forwardRes.ok) return null;
+            const forwardData = await forwardRes.json();
+
+            if (!forwardData.results || forwardData.results.length === 0) {
+                return { citation: cite.citation, caseName: cluster.case_name, originalDate, recentCiting: [], totalCiting: 0 };
+            }
+
+            // Step 3: Enrich the top forward citations with case metadata
+            const topForward = forwardData.results.slice(0, 3);
+            const enriched = await Promise.all(topForward.map(async (fc) => {
+                try {
+                    const citingOpinionId = fc.citing_opinion.match(/(\d+)\/?$/)?.[1];
+                    if (!citingOpinionId) return null;
+
+                    // Get the cluster for the citing opinion
+                    const opRes = await fetch(`https://www.courtlistener.com/api/rest/v4/opinions/${citingOpinionId}/`, {
+                        headers: clHeaders
+                    });
+                    if (!opRes.ok) return null;
+                    const opData = await opRes.json();
+
+                    const citingClusterUrl = opData.cluster;
+                    const citingClusterId = citingClusterUrl?.match(/(\d+)\/?$/)?.[1];
+                    if (!citingClusterId) return null;
+
+                    const citingClusterRes = await fetch(`https://www.courtlistener.com/api/rest/v4/clusters/${citingClusterId}/`, {
+                        headers: clHeaders
+                    });
+                    if (!citingClusterRes.ok) return null;
+                    const citingCluster = await citingClusterRes.json();
+
+                    return {
+                        caseName: citingCluster.case_name || 'Unknown',
+                        dateFiled: citingCluster.date_filed || 'Unknown',
+                        url: `https://www.courtlistener.com${citingCluster.absolute_url || ''}`,
+                        depth: fc.depth // how many times this case cited the original
+                    };
+                } catch { return null; }
+            }));
+
+            return {
+                citation: cite.citation,
+                caseName: cluster.case_name,
+                originalDate,
+                clUrl: `https://www.courtlistener.com${cluster.absolute_url}`,
+                totalCiting: forwardData.count,
+                recentCiting: enriched.filter(Boolean)
+            };
+        } catch (err) {
+            console.error(`Forward cite error for ${cite.citation}:`, err.message);
+            return null;
+        }
+    }));
+
+    return profiles.filter(Boolean);
+}
+
 // Part 1: The Retrieval Logic (Finds the best chunks)
 async function getLegalContext(userQuery) {
     const embeddingResponse = await openai.embeddings.create({
@@ -186,14 +284,37 @@ Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
     console.log("\n--- ATTORNEY MALPRACTICE DIAGNOSTIC ---");
     console.log(rawAnswer);
 
-    // Run citation verification through CourtListener
-    const { annotatedText } = await shepardizeCitations(rawAnswer);
+    // Run citation verification AND forward citation profile in parallel
+    const [{ annotatedText, citationsFound }, forwardProfiles] = await Promise.all([
+        shepardizeCitations(rawAnswer),
+        shepardizeCitations(rawAnswer).then(r => forwardCiteProfile(r.citationsFound))
+    ]);
 
-    // Append a universal citation disclaimer
+    // Build the "Recent Precedent Update" section from forward citation data
+    let precedentUpdate = '';
+    if (forwardProfiles && forwardProfiles.length > 0) {
+        precedentUpdate = '\n\n---\n### 📡 Recent Precedent Update\n*The following cases have recently cited the authorities used in this analysis:*\n\n';
+        for (const profile of forwardProfiles) {
+            precedentUpdate += `**[${profile.citation} — *${profile.caseName}*](${profile.clUrl})**`;
+            precedentUpdate += ` (decided ${profile.originalDate} · cited by **${profile.totalCiting}** later opinions)\n`;
+            if (profile.recentCiting.length > 0) {
+                precedentUpdate += `*Most recent citing cases:*\n`;
+                for (const rc of profile.recentCiting) {
+                    const depth = rc.depth > 1 ? ` *(cited ${rc.depth}×)*` : '';
+                    precedentUpdate += `- [*${rc.caseName}*](${rc.url}) — ${rc.dateFiled}${depth}\n`;
+                }
+            } else {
+                precedentUpdate += `*No recent citing cases found in CourtListener.*\n`;
+            }
+            precedentUpdate += '\n';
+        }
+    }
+
+    // Append disclaimer
     const disclaimer = `\n\n---\n> ⚖️ *This analysis is for informational purposes only. All citations have been cross-referenced with CourtListener's database, but should be independently verified via Westlaw or LexisNexis before relying on them in any legal proceeding.*`;
 
     return {
-        answer: annotatedText + disclaimer,
+        answer: annotatedText + precedentUpdate + disclaimer,
         sources: contextChunks
     };
 }
