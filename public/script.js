@@ -166,17 +166,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     a.rel = 'noopener noreferrer';
                     a.className = 'source-link';
 
-                    // Use the blog post title from DB if available,
-                    // otherwise derive a readable title from the URL slug
-                    if (src.post_title) {
-                        a.textContent = src.post_title;
-                    } else {
-                        const slug = src.post_url.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
-                        const lastSegment = slug.split('/').pop() || slug;
-                        a.textContent = lastSegment
-                            .replace(/-/g, ' ')
-                            .replace(/\b\w/g, c => c.toUpperCase());
+                    // Derive a readable title from the URL slug
+                    // e.g. /2024/01/attorney-missed-deadline/ → "Attorney Missed Deadline"
+                    const segments = src.post_url.replace(/\/$/, '').split('/');
+                    // Walk backwards to find the first non-date, non-empty segment
+                    let titleSlug = '';
+                    for (let i = segments.length - 1; i >= 0; i--) {
+                        if (segments[i] && !/^\d+$/.test(segments[i])) {
+                            titleSlug = segments[i];
+                            break;
+                        }
                     }
+                    a.textContent = titleSlug
+                        ? titleSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                        : src.post_url;
 
                     li.appendChild(a);
                     sourcesList.appendChild(li);

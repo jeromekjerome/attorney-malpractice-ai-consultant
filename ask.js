@@ -14,13 +14,9 @@ async function getLegalContext(userQuery) {
     const queryVector = embeddingResponse.data[0].embedding;
 
     const results = await sql`
-        SELECT 
-            c.post_url, 
-            c.chunk_content, 
-            p.blog_post AS post_title,
-            1 - (c.embedding <=> ${JSON.stringify(queryVector)}) AS similarity
-        FROM bluestone_blog_chunks c
-        LEFT JOIN bluestone_blog_pages p ON p.url = c.post_url
+        SELECT post_url, chunk_content, 
+        1 - (embedding <=> ${JSON.stringify(queryVector)}) AS similarity
+        FROM bluestone_blog_chunks
         ORDER BY similarity DESC
         LIMIT 5;
     `;
