@@ -197,6 +197,9 @@ export async function answerUserQuestion(messages, mode = 'client') {
     const latestUserMessage = isArray ? messages[messages.length - 1].content : messages;
     const conversationHistory = isArray ? messages : [{ role: 'user', content: messages }];
 
+    // Turn number = number of user messages so far (each full turn = user + assistant)
+    const turnNumber = conversationHistory.filter(m => m.role === 'user').length;
+
     console.log(`\n🔍 Searching Andrew Bluestone's blog for context regarding: "${latestUserMessage}" (Mode: ${mode})...`);
 
     const contextChunks = await getLegalContext(latestUserMessage);
@@ -228,7 +231,7 @@ Step-by-step, infer how courts view the user's specific situation based on the r
 
 ### 4. Diagnostic Conclusion
 Provide a clear, objective outcome based on your analysis. You must explicitly state whether a viable legal malpractice claim appears to exist based on the facts and precedent reviewed.
-- **If a viable claim appears to exist:** Strongly encourage the user to contact Andrew Bluestone directly at **(212) 791-5600** for a formal consultation.
+- **If a viable claim appears to exist:** ${turnNumber >= 3 ? 'Strongly encourage the user to contact Andrew Bluestone directly at **(212) 791-5600** for a formal consultation.' : 'Note that a formal consultation with a legal malpractice attorney may be warranted, but first gather more information.'}
 - **If no viable claim appears to exist** (e.g., statute of limitations has run, no attorney-client relationship, damages absent): Clearly explain why and do NOT suggest calling Andrew Bluestone, as it would not be a productive use of his time.
 
 Tone: Professional, analytical, conversational, and highly authoritative. 
