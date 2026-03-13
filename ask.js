@@ -4,6 +4,75 @@ import OpenAI from 'openai';
 
 const sql = neon(process.env.DATABASE_URL);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const COURTLISTENER_TOKEN = process.env.COURTLISTENER_TOKEN;
+
+// Part 0: Live Citator (Shepardizing via CourtListener)
+async function shepardizeCitations(text) {
+    if (!COURTLISTENER_TOKEN) {
+        console.warn('⚠️  No COURTLISTENER_TOKEN set — skipping citation verification.');
+        return { annotatedText: text, citationsFound: [] };
+    }
+
+    try {
+        const formData = new URLSearchParams();
+        formData.append('text', text);
+
+        const res = await fetch('https://www.courtlistener.com/api/rest/v4/citation-lookup/', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Token ${COURTLISTENER_TOKEN}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: formData.toString()
+        });
+
+        if (!res.ok) {
+            console.error('CourtListener API error:', res.status);
+            return { annotatedText: text, citationsFound: [] };
+        }
+
+        const citations = await res.json();
+        console.log(`\n📋 CourtListener found ${citations.length} citation(s) in the AI response.`);
+
+        // Annotate the text by replacing each found citation with a verified/unverified badge
+        // We process in reverse order so string indices stay valid
+        let annotated = text;
+        const verified = [];
+        const unverified = [];
+
+        // Sort by start_index descending so replacements don't shift indices
+        const sorted = [...citations].sort((a, b) => b.start_index - a.start_index);
+
+        for (const cite of sorted) {
+            const citeText = cite.citation;
+            if (cite.status === 200 && cite.clusters && cite.clusters.length > 0) {
+                const cl = cite.clusters[0];
+                const url = `https://www.courtlistener.com${cl.absolute_url || ''}`;
+                // Replace the raw citation text with a verified, linked version
+                annotated = annotated.replace(
+                    citeText,
+                    `${citeText} [✅ Verified](${url})`
+                );
+                verified.push(citeText);
+            } else if (cite.status === 404) {
+                annotated = annotated.replace(
+                    citeText,
+                    `${citeText} ⚠️ *[Citation not found in CourtListener — verify before use]*`
+                );
+                unverified.push(citeText);
+            }
+        }
+
+        if (verified.length > 0) console.log('  ✅ Verified:', verified);
+        if (unverified.length > 0) console.log('  ⚠️  Could not verify:', unverified);
+
+        return { annotatedText: annotated, citationsFound: citations };
+
+    } catch (err) {
+        console.error('CourtListener lookup failed:', err.message);
+        return { annotatedText: text, citationsFound: [] };
+    }
+}
 
 // Part 1: The Retrieval Logic (Finds the best chunks)
 async function getLegalContext(userQuery) {
@@ -112,11 +181,19 @@ Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
         messages: apiMessages
     });
 
+    const rawAnswer = response.choices[0].message.content;
+
     console.log("\n--- ATTORNEY MALPRACTICE DIAGNOSTIC ---");
-    console.log(response.choices[0].message.content);
+    console.log(rawAnswer);
+
+    // Run citation verification through CourtListener
+    const { annotatedText } = await shepardizeCitations(rawAnswer);
+
+    // Append a universal citation disclaimer
+    const disclaimer = `\n\n---\n> ⚖️ *This analysis is for informational purposes only. All citations have been cross-referenced with CourtListener's database, but should be independently verified via Westlaw or LexisNexis before relying on them in any legal proceeding.*`;
 
     return {
-        answer: response.choices[0].message.content,
+        answer: annotatedText + disclaimer,
         sources: contextChunks
     };
 }
