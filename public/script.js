@@ -110,16 +110,22 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         const reasoningMessages = [
-            "Searching Andrew's 20-Year Case Archive...",
-            "Filtering for High-Authority Primary Citations...",
-            "Performing Vector Retrieval & LLM Re-ranking...",
-            "Synthesizing New York Legal Standards...",
-            "Analyzing Fact-to-Case Inference...",
+            "Querying Andrew's 20-Year Legal Archive...",
+            "Generating Semantic Search Embeddings...",
+            "Retrieving Top 20 Candidate Blog Chunks...",
+            "Scanning Chunks for Primary Case Citations...",
+            "Filtering Chunks for High-Authority Content...",
+            "Executing LLM Re-ranking on Top 3 Sources...",
+            "Extracting Precedents and Fiduciary Standards...",
+            "Generating Diagnostic Legal Inference...",
             "Cross-Referencing Citations with CourtListener...",
             "Executing National Case Name Rescue...",
-            "Applying LLM Inference-Based Accuracy Checks...",
-            "Profiling Forward Citations for Superseding Law...",
-            "Performing Final Surgical Citation Cleanup..."
+            "Fetching Candidate Reporters via API Search...",
+            "Applying LLM Inference to Verify Match Accuracy...",
+            "Surgically Injecting Repaired Citations...",
+            "Mapping Forward Citation Networks...",
+            "Profiling Recent Case Law Reinforcement...",
+            "Executing Final Surgical Citation Cleanup..."
         ];
 
         let reasoningIndex = 0;
