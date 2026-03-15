@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsWrapper.classList.add('hidden');
             questionInput.placeholder = "e.g., Professor, how does the continuous representation doctrine apply if...";
             submitBtn.querySelector('.btn-text').textContent = "Submit to Professor";
-            questionLabel.textContent = "Describe your situation or legal question";
+            questionLabel.textContent = "What New York precedent or doctrine shall we examine today?";
         } else {
             currentMode = 'client';
             document.body.classList.remove('professor-mode');
