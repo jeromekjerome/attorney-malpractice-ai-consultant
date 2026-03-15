@@ -44,29 +44,169 @@ async function shepardizeCitations(text) {
         const sorted = [...citations].sort((a, b) => b.start_index - a.start_index);
 
         for (const cite of sorted) {
+            const start = cite.start_index;
+            const end = cite.end_index;
             const citeText = cite.citation;
+
             if (cite.status === 200 && cite.clusters && cite.clusters.length > 0) {
                 const cl = cite.clusters[0];
                 const url = `https://www.courtlistener.com${cl.absolute_url || ''}`;
-                // Replace the raw citation text with a verified, linked version
-                annotated = annotated.replace(
-                    citeText,
-                    `${citeText} [✅ Verified](${url})`
-                );
+                const replacement = `${citeText} [✅ Verified](${url})`;
+                annotated = annotated.substring(0, start) + replacement + annotated.substring(end);
                 verified.push(citeText);
             } else if (cite.status === 404) {
-                annotated = annotated.replace(
-                    citeText,
-                    `${citeText} ⚠️ *[Citation not found in CourtListener — verify before use]*`
-                );
+                // Aggressive removal: Identify the case name and any trailing brackets
+                let s = start;
+                let e = end;
+                const before = annotated.substring(0, s);
+                
+                // 1. Look for italics: *Case Name*, 
+                const italicMatch = before.match(/\*([^*]*\b(?:v\.?|vs\.?)\b[^*]*)\*[, ]+\s*$/i);
+                // 2. Look for non-italicized "Plaintiff v Defendant" pattern
+                const plainMatch = before.match(/(?:[A-Z][\w'.,& ]+ \b(?:v\.?|vs\.?)\b [A-Z][\w'.,& ]+)[, ]+\s*$/i);
+                
+                if (italicMatch) {
+                    s -= italicMatch[0].length;
+                } else if (plainMatch) {
+                    s -= plainMatch[0].length;
+                }
+
+                const after = annotated.substring(e);
+                // Look for year/reporter info in brackets after citation: [1st Dept 2014]
+                const bracketMatch = after.match(/^[, ]*\s*\[[^\]]+\]/);
+                if (bracketMatch) {
+                    e += bracketMatch[0].length;
+                }
+                
+                // Final check: if we left a trailing "(see " or just "("
+                let resultBefore = annotated.substring(0, s).trimEnd();
+                if (resultBefore.endsWith("(see") || resultBefore.endsWith(" (see")) {
+                    resultBefore = resultBefore.substring(0, resultBefore.length - 4).trimEnd();
+                } else if (resultBefore.endsWith("(")) {
+                    // Try to also remove the closing parenthesis if it exists immediately after
+                    if (annotated.substring(e).trimStart().startsWith(")")) {
+                        const nextParen = annotated.indexOf(")", e);
+                        e = nextParen + 1;
+                        resultBefore = resultBefore.substring(0, resultBefore.length - 1).trimEnd();
+                    }
+                }
+
+                annotated = resultBefore + annotated.substring(e);
                 unverified.push(citeText);
             }
         }
 
         if (verified.length > 0) console.log('  ✅ Verified:', verified);
-        if (unverified.length > 0) console.log('  ⚠️  Could not verify:', unverified);
+        if (unverified.length > 0) console.log('  ⚠️  Could not verify (and stripped):', unverified);
 
-        return { annotatedText: annotated, citationsFound: citations };
+        // --- SECONDARY REPAIR & CLEANUP: Orphaned Case Names ---
+        // Look for case name patterns (Italicized or plain P v D) that aren't followed by a Verified badge.
+        // We will try to look these up by name on CourtListener before giving up and stripping them.
+        
+        // Match case names that ARE NOT followed by a verified badge (allowing for an intervening reporter citation)
+        // We include a precursor match for "in " or "see " so we can clean those up too
+        const orphanedRegex = /(\b(?:in|see)\s*)?(\*?[A-Z][\w'.,& ]+ \b(?:v\.?|vs\.?)\b [A-Z][\w'.,& ]+\*?)(?!\s*[, ]+(?:\d+\s+[A-Z.]+\d+\s*)?\[✅ Verified\])/gi;
+        const matches = [...annotated.matchAll(orphanedRegex)];
+        
+        if (matches.length > 0) {
+            console.log(`\n🔎 Attempting to repair ${matches.length} orphaned case name(s)...`);
+            // We'll process these in reverse order to keep positions stable
+            for (let i = matches.length - 1; i >= 0; i--) {
+                const match = matches[i];
+                const precursor = match[1] || '';
+                const caseNameMatch = match[2];
+                const caseName = caseNameMatch.replace(/\*/g, '').trim();
+                const start = match.index;
+                const end = start + match[0].length;
+
+                try {
+                    // Search CourtListener for the case name
+                    // We REMOVE the court filter to allow finding non-NY cases as requested
+                    const searchRes = await fetch(
+                        `https://www.courtlistener.com/api/rest/v4/search/?q=name:(${encodeURIComponent(caseName)})&type=o&ordering=score`, 
+                        { headers: { 'Authorization': `Token ${COURTLISTENER_TOKEN}` } }
+                    );
+
+                    if (searchRes.ok) {
+                        const searchData = await searchRes.json();
+                        // If we have potential candidates
+                        if (searchData.count > 0) {
+                            // Take top 3 results for evaluation
+                            const candidates = searchData.results.slice(0, 3);
+                            
+                            // Use inference (LLM) to verify which search result (if any) is the correct match
+                            const verificationPrompt = `You are a legal citation expert. I am trying to find the correct citation for a case mentioned in this snippet:
+"${annotated.substring(Math.max(0, start - 200), Math.min(annotated.length, end + 200))}"
+
+The case name mentioned is: "${caseName}"
+
+Here are the top search results from CourtListener:
+${candidates.map((c, idx) => `${idx + 1}. ${c.case_name} (${c.citation?.[0] || 'No citation'})`).join('\n')}
+
+Does any of these results UNAMBIGUOUSLY match the case mentioned in the snippet? 
+Respond ONLY with a JSON object: {"match_found": true, "index": 0} (where index is 0, 1, or 2) or {"match_found": false}.`;
+
+                            const evalResponse = await openai.chat.completions.create({
+                                model: "gpt-4o-mini",
+                                messages: [{ role: "system", content: "You are a precise legal research assistant." }, { role: "user", content: verificationPrompt }],
+                                response_format: { type: "json_object" }
+                            });
+
+                            const evalResult = JSON.parse(evalResponse.choices[0].message.content);
+
+                            if (evalResult.match_found && candidates[evalResult.index]) {
+                                const result = candidates[evalResult.index];
+                                const reporter = result.citation && result.citation.length > 0 ? result.citation[0] : null;
+                                const clUrl = `https://www.courtlistener.com${result.absolute_url}`;
+                                
+                                if (reporter) {
+                                    console.log(`  ✨ Repaired via inference: "${caseName}" -> ${reporter}`);
+                                    const replacement = `*${caseName}*, ${reporter} [✅ Verified](${clUrl})`;
+                                    annotated = annotated.substring(0, start) + replacement + annotated.substring(end);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error(`  ❌ Repair failed for "${caseName}":`, err.message);
+                }
+
+                // If repair failed or was ambiguous, strip it as per previous strict rule
+                console.log(`  🗑️  Stripping unrepairable case: "${caseName}"`);
+                let s = start;
+                let e = end;
+                const before = annotated.substring(0, s);
+                const after = annotated.substring(e);
+
+                // Check for year/reporter info in brackets after citation
+                const bracketMatch = after.match(/^[, ]*\s*\(?[^)]+\)?[, ]*\s*\[[^\]]+\]/);
+                if (bracketMatch) e += bracketMatch[0].length;
+                
+                let resultBefore = before.trimEnd();
+                if (resultBefore.endsWith("(see") || resultBefore.endsWith(" (see")) {
+                    resultBefore = resultBefore.substring(0, resultBefore.length - 4).trimEnd();
+                } else if (resultBefore.endsWith("(")) {
+                    // Try to also remove the closing parenthesis if it exists immediately after
+                    if (annotated.substring(e).trimStart().startsWith(")")) {
+                        const nextParen = annotated.indexOf(")", e);
+                        e = nextParen + 1;
+                        resultBefore = resultBefore.substring(0, resultBefore.length - 1).trimEnd();
+                    }
+                }
+                annotated = resultBefore + annotated.substring(e);
+            }
+        }
+
+        // 3. Final cleanup for any resulting debris
+        annotated = annotated.replace(/\(\s*[, ]+(?:and other sources|and sources)?\s*\)/gi, "");
+        annotated = annotated.replace(/\(\s*[, ]+\s*\)/g, "");
+        annotated = annotated.replace(/\*\*\s*\[[^\]]+\]/g, ""); // Clean up orphaned bold markers and trailing court info
+        annotated = annotated.replace(/\s+✅ Verified\* /g, " [✅ Verified] "); // Fix the weird badge/asterisk glitch
+        annotated = annotated.replace(/ established in\b/gi, " established"); // Clean up leading prepositions
+        annotated = annotated.replace(/([.?!])\s*[),]\s*/g, "$1 "); // Clean up rogue closing punctuation
+
+        return { annotatedText: annotated.trim(), citationsFound: citations };
 
     } catch (err) {
         console.error('CourtListener lookup failed:', err.message);
@@ -172,22 +312,80 @@ async function forwardCiteProfile(citations) {
     return profiles.filter(Boolean);
 }
 
+// Part 0c: Removed case extraction
+
 // Part 1: The Retrieval Logic (Finds the best chunks)
 async function getLegalContext(userQuery) {
+    // 1. Fast Vector Search for Top 20 Candidates
     const embeddingResponse = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: userQuery,
     });
     const queryVector = embeddingResponse.data[0].embedding;
 
-    const results = await sql`
+    const initialResults = await sql`
         SELECT post_url, chunk_content, 
         1 - (embedding <=> ${JSON.stringify(queryVector)}) AS similarity
         FROM bluestone_blog_chunks
         ORDER BY similarity DESC
-        LIMIT 5;
+        LIMIT 20;
     `;
-    return results;
+
+    // 2. Filter Top 20 Candidates for those containing complete legal citations
+    // We look for: *Case Name*, 123 A.D.3d 456
+    // Or plain Name v Name, 123 A.D.3d 456
+    const citeRegex = /(?:\*?[A-Z][\w'.,& ]+ \b(?:v\.?|vs\.?)\b [A-Z][\w'.,& ]+\*?)[, ]+\d+\s+[A-Z. ]+\d+/i;
+    
+    const filteredResults = initialResults.filter(c => {
+        const hasCite = citeRegex.test(c.chunk_content);
+        return hasCite;
+    });
+
+    console.log(`📋 Search found ${initialResults.length} candidates. ${filteredResults.length} contains complete citations.`);
+
+    if (filteredResults.length === 0) {
+        console.warn("⚠️ No chunks with complete citations found. Falling back to top vector results.");
+        return initialResults.slice(0, 3);
+    }
+
+    // 3. LLM Re-ranking to find the actual Top 3 most relevant from the citations
+    console.log(`🧠 Re-ranking top ${filteredResults.length} cited chunks via LLM...`);
+    
+    const prompt = `You are a legal research expert. Your job is to select the 3 most relevant legal blog post chunks that contain authoritative New York case law and provide the best analysis for the user's situation.
+    
+USER SITUATION: "${userQuery}"
+
+CANDIDATE CHUNKS (All contain citations):
+${filteredResults.map((c, i) => `--- [ID: ${i}] ---\n${c.chunk_content}`).join("\n\n")}
+
+Return a JSON object with a single key "top_indices" containing an array of integers representing the IDs of the 3 most relevant chunks, ordered from most to least relevant. Example: {"top_indices": [2, 0, 4]}`;
+
+    try {
+        const rerankResponse = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" }
+        });
+        
+        const result = JSON.parse(rerankResponse.choices[0].message.content);
+        
+        if (result.top_indices && Array.isArray(result.top_indices)) {
+            const rankedChunks = result.top_indices
+                .map(id => filteredResults[parseInt(id)])
+                .filter(Boolean)
+                .slice(0, 3);
+                
+            if (rankedChunks.length > 0) {
+                console.log(`✅ Re-ranking successful. Selected ${rankedChunks.length} chunks.`);
+                return rankedChunks;
+            }
+        }
+    } catch (err) {
+        console.error("⚠️ Re-ranking failed:", err.message);
+    }
+
+    // Fallback: return top 3 from filtered search
+    return filteredResults.slice(0, 3);
 }
 
 // Part 2: The Answer Logic (Generates the response)
@@ -230,13 +428,25 @@ Extract specific New York doctrines, statutes, or fiduciary standards directly f
 Step-by-step, infer how courts view the user's specific situation based on the rules found in Step 2.
 
 ### 4. Diagnostic Conclusion
-Provide a clear, objective outcome based on your analysis. You must explicitly state whether a viable legal malpractice claim appears to exist based on the facts and precedent reviewed.
-- **If a viable claim appears to exist:** ${turnNumber >= 3 ? 'Strongly encourage the user to contact Andrew Bluestone directly at **(212) 791-5600** for a formal consultation.' : 'Note that a formal consultation with a legal malpractice attorney may be warranted, but first gather more information.'}
-- **If no viable claim appears to exist** (e.g., statute of limitations has run, no attorney-client relationship, damages absent): Clearly explain why and do NOT suggest calling Andrew Bluestone, as it would not be a productive use of his time.
+Provide a clear, objective assessment of the claim. Your behavior in this section depends on the current conversation turn (Turn ${turnNumber}):
+
+**Turns 1–2 (Turn ${turnNumber <= 2 ? turnNumber + ' — ACTIVE' : turnNumber}):** Do not render a final opinion yet. You are still gathering facts. Ask ONE focused follow-up question.
+
+**Turn 3 (${turnNumber === 3 ? 'ACTIVE — state opinion, NO referral yet' : 'not yet reached'}):** State your honest, objective opinion of the strength of the claim based on facts gathered so far. Do not mention Andrew Bluestone or suggest a phone call.
+- If the claim looks promising: Affirm the viable elements and note that there are enough facts to form a preliminary view. Close by inviting the user to share any additional details that might strengthen or clarify.
+- If the claim looks weak: Clearly identify the missing elements or legal obstacles (e.g., blown statute of limitations, no damages, no attorney-client relationship). Do not dismiss them harshly — leave the door open by asking if there are additional facts that might change the analysis.
+
+**Turn 4 (${turnNumber === 4 ? 'ACTIVE' : 'not yet reached'}):** Render a final conclusion.
+- If a viable claim exists: Strongly recommend the user contact Andrew Bluestone directly at **(212) 791-5600** for a formal consultation.
+- If the claim does not appear viable: Do NOT recommend calling Andrew Bluestone yet. Instead, invite the user to share any additional context or facts that they may have missed, which could potentially change the legal analysis.
+
+**Turn 5+ (${turnNumber >= 5 ? 'ACTIVE' : 'not yet reached'}):** The user is highly engaged. 
+- If the claim has any merit, explicitly ask the user to provide their phone number so Andrew Bluestone's office can reach out to them directly. Phrase this politely and professionally (e.g., "Given the depth of our discussion and the potential viability of your claim, could you provide your phone number so Mr. Bluestone's office can reach out to you directly?"). Do NOT provide the office number again; you are now actively soliciting their contact info.
+- If the claim is clearly not viable, maintain the closure from Turn 4.
 
 Tone: Professional, analytical, conversational, and highly authoritative. 
-CITATION FORMAT: When citing any case, always format the citation properly: the case caption in *italics* (e.g., *Smith v. Jones*) followed by the full reporter reference as it appears in the source blog post (e.g., 123 A.D.3d 456, 789 N.Y.S.2d 012 [1st Dept 2014]). If the full citation is in the blog post, you must use it exactly.
-Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Rely ONLY on the provided context. Always cite Source URLs when providing rules/precedent.`;
+CITATION FORMAT: **STRICT REQUIREMENT.** You MUST NOT mention a case name unless you also provide its full reporter reference (e.g., *Smith v. Jones*, 123 A.D.3d 456). Format the caption in *italics* and the reporter reference as it appears in the source blog post.
+Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Rely ONLY on the provided context. Always cite Source URLs as clickable markdown links (e.g., [Source](url)) when providing rules/precedent. **Only include legal citations that appear in the CONTEXT. If you mention a case name without a reporter reference, or if the citation cannot be verified, it will be automatically stripped from your final output.**`;
 
     // --- PROFESSOR MODE PROMPT ---
     if (mode === 'professor') {
@@ -256,7 +466,7 @@ Constraint: You are providing a diagnostic analysis of case law, not forming an 
 
 6. **Cite Your Sources.** When correcting or affirming, cite the specific Source URL from the CONTEXT.
 
-7. **Citation Format.** When citing any case, always format it correctly: case caption in *italics* (e.g., *Smith v. Jones*) followed by the full reporter reference from the blog post (e.g., 123 A.D.3d 456 [1st Dept 2014]).
+7. **Citation Format.** **STRICT REQUIREMENT.** Never mention a case name without its full reporter reference (e.g., *Smith v. Jones*, 123 A.D.3d 456 [1st Dept 2014]). **Only include legal citations that appear in the CONTEXT. Unverified citations or standalone case names without reporters will be automatically stripped.**
 
 Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
     }
@@ -282,16 +492,19 @@ Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
         messages: apiMessages
     });
 
-    const rawAnswer = response.choices[0].message.content;
+    let rawAnswer = response.choices[0].message.content;
+
+    // In case the model still tries to generate it from old conversations
+    rawAnswer = rawAnswer.replace(/\n\n---\n> ⚖️ \*This analysis is for informational purposes only.*/g, "").trim();
 
     console.log("\n--- ATTORNEY MALPRACTICE DIAGNOSTIC ---");
     console.log(rawAnswer);
 
-    // Run citation verification AND forward citation profile in parallel
-    const [{ annotatedText, citationsFound }, forwardProfiles] = await Promise.all([
-        shepardizeCitations(rawAnswer),
-        shepardizeCitations(rawAnswer).then(r => forwardCiteProfile(r.citationsFound))
-    ]);
+    // Run citation verification once
+    const { annotatedText, citationsFound } = await shepardizeCitations(rawAnswer);
+    
+    // Run forward citation profiling based on found citations
+    const forwardProfiles = await forwardCiteProfile(citationsFound);
 
     // Build the "Recent Precedent Update" section from forward citation data
     let precedentUpdate = '';
@@ -318,6 +531,7 @@ Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
 
     return {
         answer: annotatedText + precedentUpdate + disclaimer,
+        raw_answer: annotatedText + precedentUpdate,
         sources: contextChunks
     };
 }

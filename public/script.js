@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBtn = document.getElementById('submitBtn');
     const btnText = submitBtn.querySelector('.btn-text');
     const spinner = document.getElementById('spinner');
+    const questionLabel = document.getElementById('questionLabel');
 
     const resultsWrapper = document.getElementById('resultsWrapper');
     const answerText = document.getElementById('answerText');
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsWrapper.classList.add('hidden');
             questionInput.placeholder = "e.g., Professor, how does the continuous representation doctrine apply if...";
             submitBtn.querySelector('.btn-text').textContent = "Submit to Professor";
+            questionLabel.textContent = "Describe your situation or legal question";
         } else {
             currentMode = 'client';
             document.body.classList.remove('professor-mode');
@@ -38,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsWrapper.classList.add('hidden');
             questionInput.placeholder = "e.g., What happens if my lawyer misses the statute of limitations in New York?";
             submitBtn.querySelector('.btn-text').textContent = "Analyze Case";
+            questionLabel.textContent = "Describe your situation or legal question";
         }
     });
 
@@ -143,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             // Add AI response to history
-            conversationHistory.push({ role: 'assistant', content: data.answer });
+            conversationHistory.push({ role: 'assistant', content: data.raw_answer || data.answer });
 
             // Create AI Bubble
             const aiBubble = document.createElement('div');
@@ -151,6 +154,17 @@ document.addEventListener('DOMContentLoaded', () => {
             aiBubble.style.marginBottom = "1.5rem";
             aiBubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.answer) : data.answer;
             answerText.appendChild(aiBubble);
+
+            // Update Label with AI's last question, if any
+            const questions = data.answer.match(/[^.?!]+(\?)/g);
+            if (questions && questions.length > 0) {
+                let lastQ = questions[questions.length - 1].trim();
+                // Strip common markdown markers at the beginning
+                lastQ = lastQ.replace(/^[\s\n>*]+/, '');
+                questionLabel.textContent = lastQ;
+            } else {
+                questionLabel.textContent = "Describe your situation or legal question";
+            }
 
             // Render Sources
             sourcesList.innerHTML = '';
@@ -165,13 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     li.className = 'source-item';
 
                     const a = document.createElement('a');
-                    a.href = src.post_url;
-                    a.target = '_blank';
-                    a.rel = 'noopener noreferrer';
-                    a.className = 'source-link';
-
-                    // Derive a readable title from the URL slug
-                    // e.g. /2024/01/attorney-missed-deadline/ → "Attorney Missed Deadline"
+                    // Deriving a readable title first since we need titleSlug to fallback for search query
                     const segments = src.post_url.replace(/\/$/, '').split('/');
                     // Walk backwards to find the first non-date, non-empty segment
                     let titleSlug = '';
@@ -181,9 +189,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             break;
                         }
                     }
-                    a.textContent = titleSlug
+                    let finalTitle = titleSlug
                         ? titleSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
                         : src.post_url;
+                    
+                    a.href = src.post_url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.className = 'source-link';
+
+                    a.textContent = finalTitle;
 
                     li.appendChild(a);
                     sourcesList.appendChild(li);
