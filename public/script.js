@@ -320,7 +320,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     askForm.scrollIntoView({ behavior: 'smooth' });
                 };
                 
-                li.appendChild(div);
                 topicsList.appendChild(li);
             });
         } catch (err) {
