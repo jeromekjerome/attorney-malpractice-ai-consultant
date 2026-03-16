@@ -62,19 +62,38 @@
                         </div>
                     </div>
 
-                    <div class="sources-card glass-panel sidebar-card">
-                        <div class="card-header">
-                            <div class="header-icon small">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
-                                </svg>
+                    <div class="sidebar-column">
+                        <div class="sources-card glass-panel sidebar-card">
+                            <div class="card-header">
+                                <div class="header-icon small">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                                    </svg>
+                                </div>
+                                <h4 class="card-title">Andrew's Related Posts</h4>
                             </div>
-                            <h4 class="card-title">Andrew's Related Posts</h4>
+                            <ul class="sources-list" id="sourcesList">
+                                <!-- Populated by JS -->
+                            </ul>
                         </div>
-                        <ul class="sources-list" id="sourcesList">
-                            <!-- Populated by JS -->
-                        </ul>
+
+                        <div class="topics-card glass-panel sidebar-card" style="margin-top: 1.5rem;">
+                            <div class="card-header">
+                                <div class="header-icon small">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                </div>
+                                <h4 class="card-title">Common Study Topics</h4>
+                            </div>
+                            <ul class="sources-list" id="topicsList">
+                                <!-- Populated by JS -->
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>

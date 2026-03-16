@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsWrapper = document.getElementById('resultsWrapper');
     const answerText = document.getElementById('answerText');
     const sourcesList = document.getElementById('sourcesList');
+    const topicsList = document.getElementById('topicsList');
 
     const modeToggle = document.getElementById('modeToggle');
     const labelClient = document.getElementById('label-client');
@@ -16,9 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentMode = 'client';
     let conversationHistory = [];
+    let sessionId = crypto.randomUUID();
 
-    // Handle Mode Switch
+    // Reset session on mode switch
     modeToggle.addEventListener('change', (e) => {
+        sessionId = crypto.randomUUID();
         if (e.target.checked) {
             currentMode = 'professor';
             document.body.classList.add('professor-mode');
@@ -92,44 +95,65 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Reasoning Messages UI
         const thinkingBubble = document.createElement('div');
-        thinkingBubble.className = "thinking-bubble";
+        thinkingBubble.className = `thinking-bubble ${currentMode}-thinking`;
         thinkingBubble.style.margin = "1.5rem 0";
         thinkingBubble.style.padding = "1rem";
-        thinkingBubble.style.background = "rgba(138, 43, 226, 0.05)";
-        thinkingBubble.style.borderLeft = "4px solid #8a2be2";
+        thinkingBubble.style.background = currentMode === 'professor' ? "rgba(220, 179, 96, 0.05)" : "rgba(138, 43, 226, 0.05)";
+        thinkingBubble.style.borderLeft = `4px solid ${currentMode === 'professor' ? 'var(--text-accent)' : '#8a2be2'}`;
         thinkingBubble.style.borderRadius = "var(--radius-sm)";
         thinkingBubble.style.color = "var(--text-secondary)";
         thinkingBubble.style.display = "flex";
         thinkingBubble.style.alignItems = "center";
         thinkingBubble.style.gap = "12px";
 
+        // Mode-specific icon and messages
+        const modeEmoji = currentMode === 'professor' ? '🎓' : '🔍';
+        const reasoningMessages = currentMode === 'professor' 
+            ? [
+                "Reviewing St. John's University Lecture Notes...",
+                "Searching Andrew's Academic Articles...",
+                "Preparing Socratic Curricula for Seminar...",
+                "Synthesizing Educational Legal Doctrines...",
+                "Retrieving Pedagogical Blog Context...",
+                "Reviewing NY Professional Conduct Standards...",
+                "Structuring Instructional Malpractice Hypothetical...",
+                "Formulating Targeted Socratic Question...",
+                "Analyzing Recent NY Slip Op Precedents...",
+                "Finalizing Academic Feedback Loop..."
+            ]
+            : [
+                "Querying Andrew's 20-Year Legal Archive...",
+                "Generating Semantic Search Embeddings...",
+                "Retrieving Top 20 Candidate Blog Chunks...",
+                "Scanning Chunks for Primary Case Citations...",
+                "Filtering Chunks for High-Authority Content...",
+                "Executing LLM Re-ranking on Top 3 Sources...",
+                "Extracting Precedents and Fiduciary Standards...",
+                "Generating Diagnostic Legal Inference...",
+                "Cross-Referencing Citations with CourtListener...",
+                "Executing National Case Name Rescue...",
+                "Fetching Candidate Reporters via API Search...",
+                "Applying LLM Inference to Verify Match Accuracy...",
+                "Surgically Injecting Repaired Citations...",
+                "Mapping Forward Citation Networks...",
+                "Profiling Recent Case Law Reinforcement...",
+                "Executing Final Surgical Citation Cleanup..."
+            ];
+
         // Use inline SVG for a nice spinner
         thinkingBubble.innerHTML = `
-            <svg class="internal-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-            </svg>
+            ${currentMode === 'professor' ? 
+                `<span style="font-size: 1.2rem; animation: pulse 2s infinite;">🎓</span>` :
+                `<svg class="internal-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                </svg>`
+            }
             <span class="thinking-text" style="font-style: italic;"></span>
-            <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+            <style>
+                @keyframes spin { 100% { transform: rotate(360deg); } }
+                @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+            </style>
         `;
-
-        const reasoningMessages = [
-            "Querying Andrew's 20-Year Legal Archive...",
-            "Generating Semantic Search Embeddings...",
-            "Retrieving Top 20 Candidate Blog Chunks...",
-            "Scanning Chunks for Primary Case Citations...",
-            "Filtering Chunks for High-Authority Content...",
-            "Executing LLM Re-ranking on Top 3 Sources...",
-            "Extracting Precedents and Fiduciary Standards...",
-            "Generating Diagnostic Legal Inference...",
-            "Cross-Referencing Citations with CourtListener...",
-            "Executing National Case Name Rescue...",
-            "Fetching Candidate Reporters via API Search...",
-            "Applying LLM Inference to Verify Match Accuracy...",
-            "Surgically Injecting Repaired Citations...",
-            "Mapping Forward Citation Networks...",
-            "Profiling Recent Case Law Reinforcement...",
-            "Executing Final Surgical Citation Cleanup..."
-        ];
 
         let reasoningIndex = 0;
         const thinkingTextSpan = thinkingBubble.querySelector('.thinking-text');
@@ -147,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ messages: conversationHistory, mode: currentMode })
+                body: JSON.stringify({ messages: conversationHistory, mode: currentMode, sessionId })
             });
 
             if (!response.ok) {
@@ -235,6 +259,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            // Fetch and update topics
+            fetchTopics();
+
             // Update generic UI state
             resultsWrapper.classList.remove('hidden');
 
@@ -274,4 +301,33 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.style.opacity = '1';
         }
     }
+
+    async function fetchTopics() {
+        try {
+            const response = await fetch('/api/topics');
+            if (!response.ok) throw new Error('Failed to fetch topics');
+            const data = await response.json();
+            
+            topicsList.innerHTML = '';
+            data.topics.forEach(topic => {
+                const li = document.createElement('li');
+                li.className = 'topic-item';
+                li.textContent = topic;
+                
+                li.onclick = () => {
+                    questionInput.value = topic;
+                    questionInput.dispatchEvent(new Event('input')); // trigger resize
+                    askForm.scrollIntoView({ behavior: 'smooth' });
+                };
+                
+                li.appendChild(div);
+                topicsList.appendChild(li);
+            });
+        } catch (err) {
+            console.error('Error loading topics:', err);
+        }
+    }
+
+    // Initial Load
+    fetchTopics();
 });

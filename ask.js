@@ -433,26 +433,16 @@ Extract specific New York doctrines, statutes, or fiduciary standards directly f
 ### 3. Application to Your Facts
 Step-by-step, infer how courts view the user's specific situation based on the rules found in Step 2.
 
-### 4. Diagnostic Conclusion
-Provide a clear, objective assessment of the claim. Your behavior in this section depends on the current conversation turn (Turn ${turnNumber}):
-
-**Turns 1–2 (Turn ${turnNumber <= 2 ? turnNumber + ' — ACTIVE' : turnNumber}):** Do not render a final opinion yet. You are still gathering facts. Ask ONE focused follow-up question.
-
-**Turn 3 (${turnNumber === 3 ? 'ACTIVE — state opinion, NO referral yet' : 'not yet reached'}):** State your honest, objective opinion of the strength of the claim based on facts gathered so far. Do not mention Andrew Bluestone or suggest a phone call.
-- If the claim looks promising: Affirm the viable elements and note that there are enough facts to form a preliminary view. Close by inviting the user to share any additional details that might strengthen or clarify.
-- If the claim looks weak: Clearly identify the missing elements or legal obstacles (e.g., blown statute of limitations, no damages, no attorney-client relationship). Do not dismiss them harshly — leave the door open by asking if there are additional facts that might change the analysis.
-
-**Turn 4 (${turnNumber === 4 ? 'ACTIVE' : 'not yet reached'}):** Render a final conclusion.
-- If a viable claim exists: Strongly recommend the user contact Andrew Bluestone directly at **(212) 791-5600** for a formal consultation.
-- If the claim does not appear viable: Do NOT recommend calling Andrew Bluestone yet. Instead, invite the user to share any additional context or facts that they may have missed, which could potentially change the legal analysis.
-
-**Turn 5+ (${turnNumber >= 5 ? 'ACTIVE' : 'not yet reached'}):** The user is highly engaged. 
-- If the claim has any merit, explicitly ask the user to provide their phone number so Andrew Bluestone's office can reach out to them directly. Phrase this politely and professionally (e.g., "Given the depth of our discussion and the potential viability of your claim, could you provide your phone number so Mr. Bluestone's office can reach out to you directly?"). Do NOT provide the office number again; you are now actively soliciting their contact info.
-- If the claim is clearly not viable, maintain the closure from Turn 4.
+**DIAGNOSTIC CONCLUSION RULES:**
+1. If the Facts are **INCOMPLETE** (Turn ${turnNumber}): Ask ONE focused follow-up question. Do not refer to Andrew yet.
+2. If the Facts are **SUFFICIENT** (Turn ${turnNumber}):
+   - **Render a Final Conclusion.**
+   - If viable: Strongly recommend contacting Andrew Bluestone at **(212) 791-5600**.
+   - If the user is at Turn 3+ and the claim has merit, explicitly ask for the user's phone number so the office can reach out to them directly.
 
 Tone: Professional, analytical, conversational, and highly authoritative. 
 CITATION FORMAT: **STRICT REQUIREMENT.** You MUST NOT mention a case name unless you also provide its full reporter reference (e.g., *Smith v. Jones*, 123 A.D.3d 456). Format the caption in *italics* and the reporter reference as it appears in the source blog post.
-Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Rely ONLY on the provided context. Always cite Source URLs as clickable markdown links (e.g., [Source](url)) when providing rules/precedent. **Only include legal citations that appear in the CONTEXT. If you mention a case name without a reporter reference, or if the citation cannot be verified, it will be automatically stripped from your final output.**`;
+Constraint: You are providing a diagnostic analysis of case law, not forming an attorney-client relationship. Rely ONLY on the provided context. Always cite Source URLs as clickable markdown links (e.g., [Source](url)) when providing rules/precedent. **Only include legal citations that appear in the CONTEXT.**`;
 
     // --- PROFESSOR MODE PROMPT ---
     if (mode === 'professor') {
@@ -543,6 +533,64 @@ Tone: Firm, intellectually rigorous, Socratic, but encouraging.`;
         sources: contextChunks
     };
 }
+
+/**
+ * checkViability
+ * Uses GPT-4o-mini to determine if the user has a "colorable case" (viable malpractice claim)
+ * based on the conversation history and the latest AI analysis.
+ */
+export async function checkViability(history, analysis) {
+    const turnNumber = history.filter(m => m.role === 'user').length;
+    
+    const prompt = `You are a legal lead intake specialist for a New York malpractice firm.
+Review the following conversation and the AI's diagnostic analysis.
+
+CONVERSATION:
+${history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}
+
+AI ANALYSIS:
+${analysis}
+
+Your task is to determine if this user has a "colorable" (prima facie) legal malpractice case in New York AND if we have enough information to justify an intake email.
+
+CRITERIA FOR "COLORABLE":
+- Existence of attorney-client relationship.
+- Specific act of negligence (breach of duty).
+- Proximate cause (but-for the negligence, the client would have prevailed).
+- Actual damages.
+
+CRITERIA FOR "INFORMATIONAL SUFFICIENCY" (Email Trigger):
+1. Does the user provide enough facts to identify a potential malpractice event (e.g., missed deadline, settlement error, conflict)?
+2. If the facts are broad or speculative (e.g., "my lawyer is bad"), set infoSufficient to false.
+3. If the user provides a specific narrative (like the one in the special-cases test), set infoSufficient to true immediately.
+
+Return ONLY a JSON object: {
+  "isColorable": true/false, 
+  "infoSufficient": true/false,
+  "confidence": 0.0-1.0, 
+  "reasoning": "one sentence"
+}`;
+
+    try {
+        const resp = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            response_format: { type: 'json_object' },
+            temperature: 0
+        });
+        const result = JSON.parse(resp.choices[0].message.content);
+        
+        // Trigger if it's colorable AND we have enough to act on
+        const shouldNotify = result.isColorable && result.infoSufficient;
+        
+        console.log(`📡 Lead Assessment: ${shouldNotify ? '🚀 NOTIFY' : '⏳ OBSERVE'} (Turn ${turnNumber}: ${result.reasoning})`);
+        return shouldNotify;
+    } catch (err) {
+        console.error('Viability check failed:', err.message);
+        return false;
+    }
+}
+
 
 // Part 3: Test Run (Commented out for export)
 // answerUserQuestion("What happens if my lawyer misses the statute of limitations in New York?");

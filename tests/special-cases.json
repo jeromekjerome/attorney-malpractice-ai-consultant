@@ -1,0 +1,25 @@
+[
+  {
+    "id": "special-1",
+    "category": "email_notification_test",
+    "description": "High-detail prompt designed to trigger an email notification on Turn 1.",
+    "core_legal_question": "Does a missed statute of limitations with documented damages and a dismissial qualify as a colorable case?",
+    "key_facts": [
+      "Surgery on January 15, 2021.",
+      "Expert affirmation confirmed surgical error.",
+      "Attorney failed to file summons and complaint before 3-year SOL in Jan 2024.",
+      "Case dismissed with prejudice specifically due to late filing.",
+      "$500,000 in documented damages lost."
+    ],
+    "consultant_dialog": [
+      {
+        "role": "user",
+        "content": "I retained an attorney to represent me in a clear-cut medical malpractice action in the Supreme Court, New York County, regarding a surgery performed on January 15, 2021. My attorney had all my medical records and an expert affirmation confirming the surgical error. However, he failed to file the summons and complaint before the three-year statute of limitations expired in January 2024. As a result, my case was dismissed with prejudice specifically because of the late filing. I have lost the ability to recover over $500,000 in documented damages entirely because of this missed deadline. Can you analyze if I have a case for legal malpractice against him?"
+      },
+      {
+        "role": "assistant",
+        "content": "[EXPECTED: The AI should identify this as a strong colorable case and recommend a consultation with Andrew Bluestone at (212) 791-5600.]"
+      }
+    ]
+  }
+]
